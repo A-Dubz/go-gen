@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,15 @@ const (
 	stringSet string = "0123456789ABCDEFGHJKLMNPQRSTWXYZabcdefghijkmnopqrstuvwxyz"
 	symSet    string = "!@#$%^&*()+=?{}~_"
 )
+
+type genStr struct {
+	id  int
+	str bytes.Buffer
+}
+
+type genWork struct {
+	genStr genStr
+}
 
 func main() {
 	var s = flag.Bool("s", false, "Add symbols to generated string")
@@ -35,24 +45,41 @@ func main() {
 		return
 	}
 
-	var buf bytes.Buffer
 	set := stringSet
-
 	if *s {
 		set += symSet
 	}
 
+	workers := make(chan genWork, *r)
+	var wg sync.WaitGroup
+
 	for i := 0; i < *r; i++ {
-		genString(&buf, set, len)
-		fmt.Println(buf.String())
-		buf.Reset()
+		wg.Add(1)
+		go func() {
+			for work := range workers {
+				var gen = work.genStr
+				genString(&gen.str, set, len)
+				fmt.Println(gen.str.String())
+			}
+			wg.Done()
+		}()
 	}
+
+	for i := 1; i <= *r; i++ {
+		workers <- genWork{
+			genStr{i, bytes.Buffer{}},
+		}
+	}
+
+	close(workers)
+	wg.Wait()
 }
 
-// genString generates a random alphanumric string from subset
-func genString(b *bytes.Buffer, s string, l int) {
+// genString generates a random alphanumric string
+func genString(str *bytes.Buffer, set string, l int) {
 	rand.Seed(time.Now().UTC().UnixNano())
+
 	for i := 0; i < l; i++ {
-		b.WriteString(string(s[rand.Intn(len(s)-1)]))
+		str.WriteString(string(set[rand.Intn(len(set)-1)]))
 	}
 }
